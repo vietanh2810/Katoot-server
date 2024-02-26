@@ -27,7 +27,7 @@ const quizSchema = new mongoose.Schema({
             },
             answerTime: {
                 type: Number,
-                min: 5,
+                min: 1,
                 max: 90,
             },
             question: {

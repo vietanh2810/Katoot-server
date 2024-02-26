@@ -11,9 +11,9 @@ function initializeSocketServer(io) {
 
         socket.on('sessionCreate', async (quizId, userId, nbOfParticipants) => {
             let result = await sessionController.createSession(quizId, userId, nbOfParticipants, socket); 
-            console.log(result);
             if (result.success) {
                 socket.emit('success', result.session);
+                socket.join(result.session.sessionId);
             } else {
                 socket.emit('fail', result.message);
             }
@@ -36,7 +36,8 @@ function initializeSocketServer(io) {
         socket.on('sessionStart', async (sessionId, userId) => {
             let result = await sessionController.startSession(sessionId, userId, socket);
             if (result.success) {
-                socket.emit('success', result.message, result.isLive, result.question);
+                socket.join(sessionId);
+                socket.to(sessionId).emit('success', result.message, result.isLive, result.question);
                 
                 // Start timer for the first question
                 startQuestionTimer(sessionId, sessionTimers, io, result.question);
@@ -45,11 +46,14 @@ function initializeSocketServer(io) {
             }
         });
         
-        socket.on('submitAnswer', (sessionId, response, socket) => {
-            let result = sessionController.submitResponse(sessionId, response, socket);
-            const isCorrect = checkAnswer(answerData);
+        socket.on('submitAnswer', (sessionId, userId, response, time, questionIndex, socket) => {
+            let result = sessionController.submitResponse(sessionId, userId, response, time, questionIndex, socket);
 
-            socket.to(sessionId).emit('answerFeedback', { isCorrect });
+            if (result.success) {
+                io.to(sessionId).emit('success', result.message, result.playerResult, result.leaderBoard);
+            } else {
+                io.to(sessionId).emit('fail', result.message);
+            }
         });
 
         socket.on('disconnect', () => {
@@ -76,20 +80,18 @@ function startQuestionTimer(sessionId, sessionTimers, io, question) {
             clearTimeout(sessionTimers[sessionId]);
 
             // Emit the next question
-            io.to(sessionId).emit('question', nextQuestionResult.nextQuestion);
+            io.to(sessionId).emit('question',nextQuestionResult.nextQuestionIndex, nextQuestionResult.nextQuestion );
+
+            if (nextQuestionResult.nextQuestion === null) {
+                // Emit the correct answer for the previous question
+                io.to(sessionId).emit('sessionEnd', nextQuestionResult.message);
+                return;
+            }
 
             // Start timer for the next question
             startQuestionTimer(sessionId, sessionTimers, io, nextQuestionResult.nextQuestion);
-        } else { 
-            
-            // Emit session end if there are no more questions
-            io.to(sessionId).emit('sessionEnd', nextQuestionResult.message);
         }
     }, answerTime * 1000);
-}
-
-function checkAnswer(answerData) {
-    return answerData.option === 'correct';
 }
 
 module.exports = initializeSocketServer;

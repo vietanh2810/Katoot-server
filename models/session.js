@@ -46,29 +46,29 @@ const sessionSchema = new mongoose.Schema({
     ],
 });
 
-sessionSchema.pre('save', async function(next) {
-    if (this.isNew) {
-        try {
-            const playerResults = await PlayerResult.insertMany(
-                this.playerList.map(playerId => ({
-                    playerId,
-                    gameId: this._id,
-                }))
-            );
-            const leaderBoard = new LeaderBoard({
-                gameId: this._id,
-                playerResultList: playerResults.map(result => result._id),
-                questionLeaderboard: [],
-                currentLeaderboard: [],
-            });
-            await leaderBoard.save();
-            this.playerResultList = playerResults.map(result => result._id);
-        } catch (error) {
-            return next(error);
-        }
-    }
-    next();
-});
+// sessionSchema.pre('save', async function(next) {
+//     if (this.isNew) {
+//         try {
+//             const playerResults = await PlayerResult.insertMany(
+//                 this.playerList.map(playerId => ({
+//                     playerId,
+//                     gameId: this._id,
+//                 }))
+//             );
+//             const leaderBoard = new LeaderBoard({
+//                 gameId: this._id,
+//                 playerResultList: playerResults.map(result => result._id),
+//                 questionLeaderboard: [],
+//                 currentLeaderboard: [],
+//             });
+//             await leaderBoard.save();
+//             this.playerResultList = playerResults.map(result => result._id);
+//         } catch (error) {
+//             return next(error);
+//         }
+//     }
+//     next();
+// });
 
 
 module.exports = mongoose.model("Session", sessionSchema);

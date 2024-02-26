@@ -2,8 +2,7 @@ const mongoose = require("mongoose")
 
 const leaderBoardSchema = new mongoose.Schema({
     gameId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Game",
+        type: String,
     },
     playerResultList: [
         {

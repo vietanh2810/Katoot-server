@@ -2,6 +2,7 @@ const mongoose = require("mongoose")
 const Session = require("../models/session.js")
 const PlayerResult = require("../models/playerResult")
 const Quiz = require("../models/quiz.model.js")
+const LeaderBoard = require("../models/leaderBoard.js")
 
 const createSession = async (quizId, userId, nbOfParticipants, socket) => {
     console.log("Creating session")
@@ -24,6 +25,14 @@ const createSession = async (quizId, userId, nbOfParticipants, socket) => {
         playerList: [],
         playerResultList: [],
     });
+
+    const leaderBoard = new LeaderBoard({
+        gameId: session.sessionId,
+        playerResultList: [],
+        questionLeaderboard: [],
+        currentLeaderboard: [],
+    });
+    await leaderBoard.save();
 
     try {
         const newSession = await session.save();
@@ -50,6 +59,17 @@ const addPlayer = async (sessionId, pin, userId, socket) => {
         }
         session.playerList.push(userId)
         await session.save()
+        const playerResult = new PlayerResult({
+            playerId: userId,
+            gameId: session.sessionId,
+            score: 0,
+            answers: [],
+        });
+        await playerResult.save();
+        const leaderBoard = await LeaderBoard.findOne({ gameId: session.sessionId });
+        leaderBoard.playerResultList.push(playerResult._id);
+        await leaderBoard.save();
+
         return { sucess: true, message: "Player added to session" }
     }
     catch (error) {
@@ -59,7 +79,7 @@ const addPlayer = async (sessionId, pin, userId, socket) => {
 
 const startSession = async (sessionId, userId, socket) => {
     try {
-        const session = await Session.findOne({ sessionId});
+        const session = await Session.findOne({ sessionId });
         if (session.isLive) {
             return { success: false, message: "The session is already live" }
         }
@@ -91,9 +111,11 @@ const startSession = async (sessionId, userId, socket) => {
 }
 
 const calculatePoints = (correctAnswers, playerAnswers, answerTime, questionTime) => {
+    playerAnswers = playerAnswers.split(",").map(answer => answer.trim());
+
     if (correctAnswers.length !== playerAnswers.length) {
         return 0;
-    } 
+    }
     const allCorrectAnswersMatch = correctAnswers.every(answer => playerAnswers.includes(answer));
 
     const allPlayerAnswersMatch = playerAnswers.every(answer => correctAnswers.includes(answer));
@@ -115,46 +137,75 @@ const nextQuestion = async (sessionId) => {
         if (!quiz) {
             return { success: false, message: "Quiz not found" }
         }
-        const currentQuestionIndex = session.questionIdList.shift();
+        const currentQuestionIndex = session.questionIdList[0];
+        // pop the first question index from the list
+        session.questionIdList.shift();
+        await session.save();
+
+        console.log("Current question index: " + currentQuestionIndex);
         const nextQuestionIndex = session.questionIdList[0];
+        console.log("Next question index: " + nextQuestionIndex);
+        if (nextQuestionIndex === undefined) {
+            return { success: true, message: "No more questions", currentQuestion: null, nextQuestion: null }
+        }
         const currentQuestion = quiz.questionList[currentQuestionIndex];
         const nextQuestion = quiz.questionList[nextQuestionIndex];
-        return { success: true, message: "Next question found", currentQuestion, nextQuestion }
+        return { success: true, message: "Next question found", nextQuestionIndex, currentQuestion, nextQuestion }
     } catch (error) {
         return { success: false, message: error.message }
     }
 }
 
-const submitResponse = async (sessionId, userId, response, socket) => {
+const submitResponse = async (sessionId, userId, response, time, questionIndex, socket) => {
     try {
         const session = await Session.findOne({ sessionId });
-        if (!session.isLive) {
-            return { success: false, message: "The session is not live" }
+        if (!session || !session.isLive) {
+            return { success: false, message: "The session is not live or does not exist" };
         }
         const quiz = await Quiz.findById(session.quizId);
-        let currentQuestion = response.questionIndex;
-        const correctAnswers = quiz.questionList[currentQuestion].answerList.filter(answer => answer.isCorrect === true).map(answer => answer.name);
-        const playerResult = await PlayerResult.findOne({ playerId: userId, gameId: session._id });
-        const questionTime = quiz.questionList[currentQuestion].answerTime;
-        const points = calculatePoints(correctAnswers, response.answers, response.time, questionTime);
-        playerResult.answers.push(
-            {
-                questionIndex: response.questionIndex,
-                answered: true,
-                answers: response.answers,
-                time: response.time,
-                points: points,
-            }
-        );
-        playerResult.score += points;
-        await playerResult.save();
-        const leaderBoard = await LeaderBoard.findOne({ gameId: session._id });
-        return { success: true, message: "Response submitted", playerResult, leaderBoard }
+        if (!quiz) {
+            return { success: false, message: "Quiz not found" };
+        }
+        const currentQuestion = quiz.questionList[questionIndex];
+        if (!currentQuestion) {
+            return { success: false, message: "Question not found in the quiz" };
+        }
+        const correctAnswers = currentQuestion.answerList.filter(answer => answer.isCorrect === true).map(answer => answer.name);
+        const playerResult = await PlayerResult.findOne({ playerId: userId, gameId: sessionId });
+        if (!playerResult) {
+            return { success: false, message: "Player result not found" };
+        }
+        const questionTime = currentQuestion.answerTime;
+        const points = calculatePoints(correctAnswers, response, time, questionTime);
+        console.log("Points: " + points);
+        console.log('Player result before: ', playerResult);
+        // Check if answers array exists in playerResult, if not initialize it
+        if (!playerResult.answers) {
+            console.log("Answers array not found, initializing it");
+            playerResult.answers = [];
+        }
 
+        // Push the new answer to the answers array
+        playerResult.answers.push({
+            questionIndex: questionIndex,
+            answered: true,
+            answers: answers,  // Make sure answers variable is defined
+            time: time,
+            points: points,
+        });
+        playerResult.score += points;
+        console.log('Player result after: ', playerResult);
+        await playerResult.save();
+        console.log("Player result saved: ", playerResult);
+        const leaderBoard = await LeaderBoard.findOne({ gameId: session._id });
+        console.log("Leaderboard: ", leaderBoard);
+
+        return { success: true, message: "Response submitted", playerResult, leaderBoard };
     } catch (error) {
-        return { success: false, message: error.message }
+        return { success: false, message: error };
     }
-}
+};
+
 
 function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {

@@ -65,6 +65,8 @@ async function purgeData() {
         await Role.deleteMany({});
         await Quiz.deleteMany({});
         await SessionModel.deleteMany({});
+        await db.playerResult.deleteMany({});
+        await db.leaderBoard.deleteMany({});
         
         console.log("Data purged successfully.");
     } catch (error) {
@@ -143,13 +145,13 @@ async function createDefaultQuiz() {
             numberOfQuestions: 0,
             quizConfig: {
                 timerOn: true,
-                randomOrder: true,
+                randomOrder: false,
             },
             numberOfParticipants: 0,
             questionList: [
                 {
                     questionType: "True/False",
-                    answerTime: 10,
+                    answerTime: 20,
                     question: "JavaScript is a programming language.",
                     answerList: [
                         { name: "True", body: "True", isCorrect: true },
@@ -180,7 +182,7 @@ async function createDefaultQuiz() {
                 },
                 {
                     questionType: "True/False",
-                    answerTime: 10,
+                    answerTime: 20,
                     question: "CSS stands for Cascading Style Sheets.",
                     answerList: [
                         { name: "True", body: "True", isCorrect: true },
@@ -200,7 +202,7 @@ async function createDefaultQuiz() {
                 },
                 {
                     questionType: "True/False",
-                    answerTime: 10,
+                    answerTime: 20,
                     question: "HTML documents are saved with a .html file extension.",
                     answerList: [
                         { name: "True", body: "True", isCorrect: true },
